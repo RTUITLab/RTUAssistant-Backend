@@ -6,6 +6,7 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     social_id = db.Column(db.String(64), nullable=False, unique=True)
     secret = db.Column(db.String(64), nullable=False, unique=True)
+    fingerprint = db.Column(db.String(64), unique=True, default = '')
     status = db.Column(db.String())
     refresh_token = db.Column(db.String())
     log_in = db.Column(db.Boolean, nullable=False, default = False)

@@ -40,9 +40,9 @@ def refresh_token():
                     refresh_token = jwt.encode({'exp': datetime.datetime.utcnow() + datetime.timedelta(days=60)}, 
                                                 SECRET, algorithm='HS256')
                     
-                    res['access_token'] = encoded_jwt
+                    res['access_token'] = access_token
                     res['refresh_token'] = refresh_token
-                    user.update({'refresh_token': refresh_token})
+                    user.refresh_token = refresh_token
                     db.session.commit()
                 else:
                     status = 'error'
@@ -98,7 +98,7 @@ def logout():
                     refresh_token = jwt.encode({'exp': datetime.datetime.utcnow()}, 
                                                 SECRET, algorithm='HS256')
                     
-                    user.update({'refresh_token': refresh_token})
+                    user.refresh_token = refresh_token
                     db.session.commit()
                 else:
                     status = 'error'
@@ -138,6 +138,7 @@ def logout():
 @app.route('/get_schedule', methods=["POST"])
 def get_schedule():
     try:
+        req = request.get_json(force=True)
         print(SCHEDULE_URL+"/"+str(req["group"])+"/today"+str(req["day"]))
         r = requests.get(SCHEDULE_URL+"/"+str(req["group"])+"/"+str(req["day"])).json()
         return make_response(r)
@@ -157,11 +158,11 @@ def oauth_callback(provider):
                 'code': request.args.get('code'), 
                 'grant_type': 'authorization_code',
                 'redirect_uri': 'http://127.0.0.1:5000/callback/github'})
-    social_id = session.social_id
-    if social_id is None:
+    client_id = session.client_id
+    if client_id is None:
         url = FRONT_URL+ "/index"
         return redirect(url)
-    user = User.query.filter_by(social_id=social_id).first()
+    user = User.query.filter_by(social_id=client_id).first()
     if user: #if exist
         if user.status == 'ok':
             status = 'ok'
@@ -169,8 +170,8 @@ def oauth_callback(provider):
 
             refresh_token = jwt.encode({'exp': datetime.datetime.utcnow() + datetime.timedelta(days=60)}, 
                                          SECRET, algorithm='HS256')
-            
-            user.update({'refresh_token': refresh_token})
+            print(refresh_token)
+            user.refresh_token = str(refresh_token)
             db.session.commit()
 
         elif user.status == 'account_suspended':
@@ -186,10 +187,10 @@ def oauth_callback(provider):
         res['error'] = error
     
     
-    requests.post(FRONT_URL+"/get_after_login", json=res)
-    if res['error'] == error:
+    # requests.post(FRONT_URL+"/after_login", json=res)
+    if res['status'] == 'error':
         return ""
-    return redirect(FRONT_URL+ "/get_after_login")
+    return redirect(FRONT_URL+ "/after_login")
 
 
 @app.route('/authorize/<provider>')
@@ -200,7 +201,8 @@ def oauth_authorize(provider):
         git = GitHubSignIn()
         fingerprint = req['fingerprint']
         secr = req['secret']
-        user = User.query.filter_by(secret=secr, log_in=False).first()
+        user = User.query.filter_by(secret=secr).first()
+        #, log_in=False
         if user:
             url = git.service.get_authorize_url(
                 scope='read_stream',
@@ -218,9 +220,12 @@ def oauth_authorize(provider):
 @app.route('/after_login')
 def after_login():
     req = request.get_json(force=True)
+    print(0)
     fingerprint = req['fingerprint']
     secret = req['secret']
     user = User.query.filter_by(secret=secret, fingerprint=fingerprint).first()
+    print(1)
+    res = {}
     if user:
         if user.refresh_token!="":
             status = 'ok'
@@ -228,9 +233,10 @@ def after_login():
             access_token = jwt.encode({'user_id': user.id, 
                                          'exp': datetime.datetime.utcnow() + datetime.timedelta(minutes=30)}, 
                                          SECRET, algorithm='HS256')
-            res['access_token'] = access_token
+            res['access_token'] = str(access_token)
             res['refresh_token'] = user.refresh_token
-            user.update({'log_in': True})
+            user.log_in =True
+            print(2)
             db.session.commit()
         else:
             status = 'error'
@@ -242,9 +248,8 @@ def after_login():
         error = 'user_incorrect'
         res = {"status": status}
         res['error'] = error
-    
+    print(res)
     response = jsonify(res)
+    print(3)
     return make_response(response)
-
-    
 
