@@ -8,6 +8,7 @@ from .get_AMI import get_AMI
 from requests_oauthlib import OAuth2Session
 from .oauth import GitHubSignIn, OAuthSignIn, OAuth2Service
 from .models import User
+import json
 
 SECRET = environ.get('SECRET')
 SCHEDULE_URL = environ.get('SCHEDULE_URL')
@@ -150,12 +151,13 @@ def get_schedule():
 @app.route('/callback/<provider>')
 def oauth_callback(provider):
     git = GitHubSignIn()
-    session = git.service.get_auth_session(data={'code': request.args.get('code'), 
+    uri = url_for('oauth_callback', provider='github', _external=True)
+                
+    session = git.service.get_auth_session(data={
+                'code': request.args.get('code'), 
                 'grant_type': 'authorization_code',
-                'redirect_uri':url_for('oauth_callback', provider='github', _external=True)
-                })
-    r = session.get('client_secret', params={'format': 'json'})
-    print(session.client_id)
+                'redirect_uri': 'http://127.0.0.1:5000/callback/github'})
+    social_id = session.social_id
     if social_id is None:
         url = FRONT_URL+ "/index"
         return redirect(url)
@@ -184,7 +186,7 @@ def oauth_callback(provider):
         res['error'] = error
     
     
-    requests.post(URL+"/get_after_login", json=res)
+    requests.post(FRONT_URL+"/get_after_login", json=res)
     if res['error'] == error:
         return ""
     return redirect(FRONT_URL+ "/get_after_login")
@@ -192,18 +194,19 @@ def oauth_callback(provider):
 
 @app.route('/authorize/<provider>')
 def oauth_authorize(provider):
-
+        uri = url_for('oauth_callback', provider='github', _external=True)
         req = request.get_json(force=True)
         oauth = OAuthSignIn.get_provider(provider)
         git = GitHubSignIn()
         fingerprint = req['fingerprint']
-        secret = req['secret']
-        user = User.query.filter_by(secret=secret, log_in=False).first()
+        secr = req['secret']
+        user = User.query.filter_by(secret=secr, log_in=False).first()
         if user:
             url = git.service.get_authorize_url(
                 scope='read_stream',
                 response_type='code',
-                redirect_uri=url_for('oauth_callback', provider='github', _external=True))
+                redirect_uri='http://127.0.0.1:5000/callback/github'
+                )
             user.fingerprint = fingerprint
             db.session.commit()
             return make_response({'url':url, 'err':'ok'})
